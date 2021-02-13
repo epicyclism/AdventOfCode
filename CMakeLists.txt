@@ -14,7 +14,6 @@ find_package(Boost 1.75)
 
 FetchContent_MakeAvailable(ctre)
 include_directories(${ctre_SOURCE_DIR})
-message( STATUS "ctre=" ${ctre_SOURCE_DIR})
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
