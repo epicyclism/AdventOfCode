@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <numeric>
 
-#include "../compile-time-regular-expressions/single-header/ctre.hpp"
+#include <single-header/ctre.hpp>
 
 constexpr auto ln_rx = ctll::fixed_string{ R"(([a-z ]+) bags contain ([^\.]*)\.)" };
 constexpr auto bg_rx = ctll::fixed_string{ R"((\d+) ([a-z]+ [a-z]+))" };
