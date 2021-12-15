@@ -2,81 +2,53 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <array>
 #include <map>
 #include <queue>
-
-#include <boost/container/flat_map.hpp>
-#include <boost/graph/graph_traits.hpp>
-#include <boost/graph/visitors.hpp>
-#include <boost/graph/adjacency_list.hpp>
-#include <boost/graph/dijkstra_shortest_paths.hpp>
-#include <boost/property_map/property_map.hpp>
 
 struct arena_t
 {
     std::vector<char> donut_;
-    size_t sx_;
-    std::vector<std::pair<size_t, size_t>> vertices_;
-    size_t in_;
-    size_t out_;
-    size_t point_to_vertex(size_t pt)
-    {
-        for (auto n = 0; n < vertices_.size(); ++n)
-            if (vertices_[n].first == pt || vertices_[n].second == pt)
-                return n;
-        return -1;
-    }
+    int sx_;
+    std::map<std::string, std::pair<int, int>> vertices_; // name, outer pos in donut, inner pos in donut. pos 0 is not present.
 };
 
-struct vn_t
-{
-    char nm_[2];
-};
-
-bool operator<(vn_t const& l, vn_t const& r)
-{
-    if (l.nm_[0] == r.nm_[0])
-        return l.nm_[1] < r.nm_[1];
-    return l.nm_[0] < r.nm_[0];
-}
-
-bool operator==(vn_t const& l, char const* r)
-{
-    return (l.nm_[0] == r[0]) && l.nm_[1] == r[1];
-}
-
-arena_t get_arena(std::vector<std::string> const& in)
+arena_t get_arena()
 {
     arena_t a;
-    // two lines for vertices, each line two chars for vertex, donut, two chars, space, two chars, donut, two chars for vertex, two lines for vertices.
-    size_t sx = in[0].length();
-    a.donut_.reserve(sx * in.size());
-    for(auto& ln : in)
+
+    // read the input
+    std::string ln;
+    std::getline(std::cin, ln);
+    auto sx = ln.length();
+    std::cout << "sx = " << sx << '\n';
+    a.donut_.reserve(sx * sx); // it's square
+    a.donut_.assign(ln.begin(), ln.end());
+    while(std::getline(std::cin, ln))
         a.donut_.insert(a.donut_.end(), ln.begin(), ln.end() );
 
     // parse out vertices
-    std::map<vn_t, std::pair<size_t, size_t>> mvn;
-    for (size_t n = 0; n < a.donut_.size() - sx; ++n)
+    for (int n = 0; n < a.donut_.size() - sx; ++n)
     {
         if (::isalpha(a.donut_[n]))
         {
             bool outer = true;
-            size_t vp = 0;
-            vn_t nm;
+            int vp = 0;
+            std::string nm;
             if (::isalpha(a.donut_[n + sx])) // vertical
             {
-                nm.nm_[0] = a.donut_[n];
-                nm.nm_[1] = a.donut_[n + sx];
+                nm = a.donut_[n];
+                nm += a.donut_[n + sx];
                 if (n < sx) // top
                     vp = n + 2 * sx;
                 else
-                if (n / sx < in.size() / 2) // upper inner
+                if (n < a.donut_.size() / 2) // upper inner
                 {
                     vp = n - sx;
                     outer = false;
                 }
                 else
-                if (n / sx < in.size() - 3) // lower inner
+                if (n < a.donut_.size() - 2 * sx) // lower inner
                 {
                     vp = n + 2 * sx;
                     outer = false;
@@ -87,8 +59,8 @@ arena_t get_arena(std::vector<std::string> const& in)
             else
             if (::isalpha(a.donut_[n + 1])) // horizontal
             {
-                nm.nm_[0] = a.donut_[n];
-                nm.nm_[1] = a.donut_[n + 1];
+                nm = a.donut_[n];
+                nm += a.donut_[n + 1];
                 if (n % sx == 0) // left 
                     vp = n + 2;
                 else
@@ -109,35 +81,24 @@ arena_t get_arena(std::vector<std::string> const& in)
             if (vp)
             {
                 if (outer)
-                    mvn[nm].first = vp;
+                    a.vertices_[nm].first = vp;
                 else
-                    mvn[nm].second = vp;
+                    a.vertices_[nm].second = vp;
             }
         }
-    }
-    for (auto& v : mvn)
-    {
-        if (v.first == "AA")
-            a.in_ = a.vertices_.size();
-        else
-        if (v.first == "ZZ")
-            a.out_ = 2 * a.vertices_.size();
-        std::cout << v.first.nm_[0] << v.first.nm_[1] << " -> " << a.vertices_.size() << "( " << v.second.first << ", " << v.second.second << ")\n";
-        a.vertices_.push_back(v.second);
     }
     a.sx_ = sx;
     return a;
 }
 
-using namespace boost;
+void print_vertices(arena_t const& a)
+{
+    for(auto& vp : a.vertices_)
+        std::cout << vp.first << " : " << vp.second.first << ", " << vp.second.second << '\n';
+}
 
-using graph_t = adjacency_list < vecS, vecS, undirectedS,
-    no_property, property<edge_weight_t, size_t>>;
-
-using vertex_t = graph_traits<graph_t>::vertex_descriptor;
-
-using can_move_set = std::array<size_t, 4>;
-can_move_set get_moves(arena_t const& a, size_t p)
+using can_move_set = std::array<int, 4>;
+can_move_set get_moves(arena_t const& a, int p)
 {
     can_move_set cms;
     cms[0] = a.donut_[p - a.sx_] == '.' ? p - a.sx_ : -1;
@@ -148,149 +109,201 @@ can_move_set get_moves(arena_t const& a, size_t p)
     return cms;
 }
 
-std::vector<size_t> bfs(arena_t const& a, size_t s)
+std::vector<int> bfs(arena_t const& a, int s)
 {
-    std::vector <size_t> d(a.donut_.size());
-    std::fill(d.begin(), d.end(), 0);
+    std::vector <int> d(a.donut_.size(), -1);
     std::queue<size_t> q;
-    if(s != 0)
-        q.push(s);
+    q.push(s);
+    d[s] = 0;
     while (!q.empty())
     {
         auto p = q.front(); q.pop();
+
         auto cms = get_moves(a, p);
         for (auto& v : cms)
         {
-            if (v != -1 && (d[v] == 0))
+            if (v != -1 && (d[v] == -1))
             {
                 d[v] = d[p] + 1;
                 q.push(v);
             }
         }
     }
+
     return d;
 }
 
-void add_edge_(size_t b, size_t e, size_t w, graph_t& g)
+struct edge_store_t
 {
-    if (b == e)
-        return;
-    std::cout << "From " << b << " to " << e << ", weight " << w << '\n';
-    add_edge(b, e, w, g);
+    int f_;
+    int t_;
+    int w_;
+    edge_store_t(int f, int t, int w) : f_(f), t_(t), w_(w)
+    {}
+};
+
+struct edge_store
+{
+    // convenience store for vertex names
+    std::vector<std::string> vnm_;
+    // list of derived weighted edges
+    // the first vnm_.size vertex_ids are on the outside, the next on the inside
+    // there are two redundant spaces since AA and ZZ aren't present internally.
+    std::vector<edge_store_t> edges_;
+};
+
+edge_store build_edge_store(arena_t const& a)
+{
+    edge_store es;
+    int vid_f = 0;
+    for (auto& v : a.vertices_)
+    {
+        es.vnm_.emplace_back(v.first);
+        auto d = bfs(a, v.second.first);
+        int vid_t = 0;
+        for (auto& e : a.vertices_)
+        {
+            if (d[e.second.first] > 0)
+                es.edges_.emplace_back(vid_f, vid_t, d[e.second.first]);
+            if (d[e.second.second] > 0)
+                es.edges_.emplace_back(vid_f, vid_t + a.vertices_.size(), d[e.second.second]);
+            ++vid_t;
+        }
+        d = bfs(a, v.second.second);
+        auto vid_f2 { vid_f + a.vertices_.size()};
+        vid_t = 0;
+        for (auto& e : a.vertices_)
+        {
+            if (d[e.second.first] > 0)
+                es.edges_.emplace_back(vid_f2, vid_t, d[e.second.first]);
+            if (d[e.second.second] > 0)
+                es.edges_.emplace_back(vid_f2, vid_t + a.vertices_.size(), d[e.second.second]);
+            ++vid_t;
+        }
+        ++vid_f;
+    }
+
+    return es;
+}
+
+void print_edge_store(edge_store const& es)
+{
+    for(auto& e : es.edges_)
+    {
+        auto& fnm = es.vnm_[e.f_ % es.vnm_.size()];
+        auto& tnm = es.vnm_[e.t_ % es.vnm_.size()];
+        std::cout << fnm << " -> " << tnm << " (" << e.w_ << ")\n";
+    }
 }
 
 struct edge_t
 {
-    size_t f_;
-    size_t t_;
-    size_t w_;
-    edge_t(size_t f, size_t t, size_t w) : f_(f), t_(t), w_(w)
-    {}
+    int to_;
+    int wt_;
 };
 
-using edge_store = std::vector<edge_t>;
+using graph_t = std::vector<std::vector<edge_t>>;
 
-void build_graph(graph_t& rg, edge_store const& ve, size_t nv, size_t rnd, bool loop)
+void add_edge(int v1, int v2, int wt, graph_t& g)
 {
-    if (loop)
-    {
-         for(size_t vct = 0; vct < nv; vct += 2)
-            add_edge(vct, vct + 1, 1, rg);
-    }
-    else
-    if(rnd > 0)
-    {
-        for (size_t vct = nv * (rnd - 1); vct < nv * rnd; vct += 2)
-            add_edge(vct + 1, vct + nv, 1, rg);
-    }
-    auto vc = nv * rnd;
-    for (auto& v : ve)
-        add_edge(v.f_ + vc, v.t_ + vc, v.w_, rg);
+    g[v1].push_back({v2, wt});
+    g[v2].push_back({v1, wt});
 }
 
-std::pair<edge_store, size_t> build_edge_store(arena_t const& a)
+std::vector<int> dijkstra(int from, graph_t const& g)
 {
-    edge_store es;
-    size_t vc = 0;
-    vc = 0;
-    for (auto& v : a.vertices_)
+    std::vector<int> d(g.size(), std::numeric_limits<int>::max());
+    std::vector<bool> inq(g.size(), true);
+    // find th4 offset o of the min value of 'd' for which inq[o] is true
+    // numeric_limits max if none
+    auto find_min = [&]() -> int
     {
-        auto d = bfs(a, v.first);
-        size_t ec = 0;
-        for (auto& e : a.vertices_)
+        auto m = std::numeric_limits<int>::max();
+        auto mx = std::numeric_limits<int>::max();
+        for(int n = 0; n < inq.size(); ++n)
+            if( inq[n] && d[n] < mx)
+            {
+                m = n;
+                mx = d[n];
+            }
+        return m;
+    };
+    auto u = from;
+    d[u] = 0;
+    while(u != std::numeric_limits<int>::max())
+    {
+        inq[u] = false;
+        for( auto v : g[u])
         {
-            if (d[e.first])
-                es.emplace_back(vc, ec, d[e.first]);
-            if (d[e.second])
-                es.emplace_back(vc, ec + 1, d[e.second]);
-            ++ec;
-            ++ec;
+            if(inq[v.to_] && (d[v.to_] > d[u] + v.wt_))
+                d[v.to_] = d[u] + v.wt_;
         }
-        ec = 0;
-        ++vc;
-        d = bfs(a, v.second);
-        for (auto& e : a.vertices_)
-        {
-            if (d[e.first])
-                es.emplace_back(vc, ec, d[e.first]);
-            if (d[e.second])
-                es.emplace_back(vc, ec + 1, d[e.second]);
-            ++ec;
-            ++ec;
-        }
-        ++vc;
+        u = find_min();
     }
-
-    return { es, a.vertices_.size() * 2 };
-//    return { es, vc - 1 };
+    return d;
 }
 
-std::vector<std::string> get_input()
+void print_graph(graph_t const& g)
 {
-    std::vector<std::string> rv;
-    std::string ln;
-    while (std::getline(std::cin, ln))
-        rv.emplace_back(ln);
-
-    return rv;
-}
-
-void pt1(arena_t a)
-{
-    auto[ es, ne] = build_edge_store(a);
-    graph_t g;
-    build_graph(g, es, ne, 0, true);
-    std::vector<size_t> d(num_vertices(g));
-    dijkstra_shortest_paths(g, a.in_,
-        distance_map(boost::make_iterator_property_map(d.begin(), get(boost::vertex_index, g))));
-    std::cout << "pt1 " << d[a.out_] << '\n';
-}
-
-void pt2(arena_t a)
-{
-    auto[ es, ne] = build_edge_store(a);
-    graph_t g;
     int n = 0;
-    build_graph(g, es, ne, n, false);
-    while(1)
+    for(auto& al : g)
     {
+        std::cout << n << " : " ;
+        for(auto& t : al)
+            std::cout << t.to_ << ' ';
+        std::cout << '\n';
         ++n;
-        build_graph(g, es, ne, n, false);
-        std::vector<size_t> d(num_vertices(g));
-        dijkstra_shortest_paths(g, a.in_,
-            distance_map(boost::make_iterator_property_map(d.begin(), get(boost::vertex_index, g))));
-        if (d[a.out_] != -1)
-        {
-            std::cout << "pt2 " << d[a.out_] << ", after " << n << " recursions\n";
-            return;
-        }
     }
+}
+
+int pt1(edge_store const& es)
+{
+    // install the edges in a graph
+    int nv = es.vnm_.size(); // number of outside vertices
+    graph_t g(nv * 2); // each named vertex represents two (apart from AA and ZZ) actual vertices
+    for(auto& e : es.edges_)
+        add_edge(e.f_, e.t_, e.w_, g);
+    // make the part one connections, to link inside and outside versions of each vertex
+    // assume AA is first and ZZ is last, with a count of N, then link 1, N + 1 -> N - 2, 2N - 2
+    for ( int v = 1; v < nv - 1; ++v)
+        add_edge(v, v + nv, 1, g);
+    print_graph(g);
+    // now do the dijkstra thing,source vertex is 0, target is nv - 1;
+    auto d = dijkstra(0, g);
+
+    return d[nv - 1];
+}
+
+int pt2(edge_store const& es)
+{
+    int nv = es.vnm_.size(); // number of outside vertices
+    // install the base
+    graph_t g(nv * 2 * 33); // each named vertex represents two (apart from AA and ZZ) actual vertices, account for 32 copies
+    // repeat more times,
+    for( int cnt = 0; cnt < 32; ++cnt)
+    {
+        int base_vertex = cnt * (nv * 2);
+        // install a copy
+        for(auto& e : es.edges_)
+            add_edge(e.f_ + base_vertex, e.t_ + base_vertex, e.w_, g);
+        // join inside of parent to outside of child
+        for ( int v = 1; v < nv - 1; ++v)
+            add_edge(v + base_vertex + nv, v + 2 * nv + base_vertex, 1, g);
+    }
+    // now do the dijkstra thing,source vertex is 0, target is nv - 1;
+    auto d = dijkstra(0, g);
+
+    return d[nv - 1];
+
 }
 
 int main()
 {
-    auto in = get_input();
-    auto a = get_arena(in);
-    pt1(a);
-    pt2(a);
+    std::cout << "Reading input\n";
+    auto a = get_arena();
+    print_vertices(a);
+    auto es = build_edge_store(a);
+    print_edge_store(es);
+    std::cout << "part 1 = " << pt1(es) << '\n';
+    std::cout << "part 2 = " << pt2(es) << '\n';
 }
